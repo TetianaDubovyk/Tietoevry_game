@@ -1,5 +1,5 @@
 # Tietoevry strategy game
-A technical task for an Internship position, written in C.
+A turn based strategy game, written in C.
 ## Description
 There are two applications in this project: mediator and player.
 Mediator is a program that runs from the command line as follows:
