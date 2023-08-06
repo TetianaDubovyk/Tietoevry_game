@@ -1,24 +1,26 @@
 # Tietoevry strategy game
 A turn based strategy game, written in C.
 ## Description
-There are two applications in this project: mediator and player.
-Mediator is a program that runs from the command line as follows:
+There are two applications in this project: mediator and player.<br>
+mediator.c contains the code to run the game<br>
+player.c contains the logic for making optimal moves
+
+Mediator run the Player program each round, as well as load data from files, check the correctness of data prepared by the Player program, update the game state, write a new "status.txt" file for the pPlayer program, determine the winner of the game.<br>
+The pPlayer program plan actions for its units based on the loaded information from the "status.txt" and "map.txt", and write orders to be done into the "orders.txt" file.
+
+Mediator runs from the command line as follows:
 ```
 .\mediator map.txt status.txt orders.txt timelimit(optional)
 ```
-The same parameters used to run the player program.
+Player runs as follows:
+```
+.\player map.txt status.txt orders.txt timelimit(optional)
+```
 
-"map.txt" contains a map for the game (max size of map is predefined in the header files for both programs)
-"status.txt" contains status and location of all available units
-"orders.txt" contains orders for individual units, written by player program
-timelimit - maximum time specified in seconds for the player's move
-
-mediator.c contains the code to run the game
-player.c contains the logic for making optimal moves
-
-Mediator run the player program each round, as well as load data from files, check the correctness of data prepared by the player program, update the game state, write a new "status.txt" file for the player program, determine the winner of the game.
-
-The player program plan actions for its units based on the loaded information from the "status.txt" and "map.txt", and write orders to be done into the "orders.txt" file.
+* "map.txt" contains a map for the game (max size of map is predefined in the header files for both programs)<br>
+* "status.txt" contains status and location of all available units<br>
+* "orders.txt" contains orders for individual units, written by player program<br>
+* timelimit - maximum time specified in seconds for the player's move<br>
 
 The maximum duration of the game is 2000 turns, 1000 turns for each of two players. 
 Each player has 8 different types of units, including a base, which can produce new units. On the map there is obstacles, which can be jumped over and mines, where units of the type 'worker' can mine gold.
