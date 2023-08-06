@@ -2,11 +2,11 @@
 A turn based strategy game, written in C.
 ## Description
 There are two applications in this project: mediator and player.<br>
-mediator.c contains the code to run the game<br>
-player.c contains the logic for making optimal moves
+* mediator.c contains the code to run the game<br>
+* player.c contains the logic for making optimal moves
 
-Mediator run the Player program each round, as well as load data from files, check the correctness of data prepared by the Player program, update the game state, write a new "status.txt" file for the pPlayer program, determine the winner of the game.<br>
-The pPlayer program plan actions for its units based on the loaded information from the "status.txt" and "map.txt", and write orders to be done into the "orders.txt" file.
+Mediator run the Player program each round, as well as load data from files, check the correctness of data prepared by the Player program, update the game state, write a new "status.txt" file for the Player program, determine the winner of the game.<br>
+The Player program plan actions for its units based on the loaded information from the "status.txt" and "map.txt", and write orders to be done into the "orders.txt" file.
 
 Mediator runs from the command line as follows:
 ```
