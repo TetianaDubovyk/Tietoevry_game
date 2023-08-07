@@ -41,7 +41,7 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
 
     while(fgets(map_line, MAX_SIZE_OF_MAP, map_file_ptr)) {
 
-        map->map_width = sizeof(map_line);
+        map->map_width = strlen(map_line);
 
         for(int i = 0; i <= map->map_width; i++ ){
 
