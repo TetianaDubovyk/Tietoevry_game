@@ -10,17 +10,17 @@ The Player program plans actions for its units based on the loaded information f
 
 Mediator runs from the command line as follows:
 ```
-.\mediator map.txt status.txt orders.txt timelimit(optional)
+.\mediator map.txt status.txt orders.txt [timelimit]
 ```
 Player runs as follows:
 ```
-.\player map.txt status.txt orders.txt timelimit(optional)
+.\player map.txt status.txt orders.txt [timelimit]
 ```
 
 * "map.txt" contains a map for the game (max size of map is predefined in the header files for both programs)<br>
 * "status.txt" contains status and location of all available units<br>
 * "orders.txt" contains orders for individual units, written by player program<br>
-* timelimit - maximum time specified in seconds for the player's move<br>
+* timelimit - maximum time specified in seconds for the player's move (optional)<br>
 
 The maximum duration of the game is 2000 turns, 1000 turns for each of two players. 
 Each player has 8 different types of units, including a base, which can produce new units. On the map there are obstacles, which can be jumped over, and mines, where units of the type 'worker' can mine gold.
