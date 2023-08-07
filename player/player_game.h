@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 
-#define MAX_STRING_SIZE 20
+#define MAX_STRING_SIZE 40
 #define MAX_SIZE_OF_MAP 100
 #define NUM_OF_TYPES 8
 #define MAX_MINES 50
