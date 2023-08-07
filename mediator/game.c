@@ -542,7 +542,7 @@ bool attack(struct status_info *status, int id1, int id2, int num_of_units, char
             if (target->current_strenght <= 0){
                 // If target is a base
                 if (target->unit_type->notation == 'B'){
-                    if (strcmp(player, P) == 0){
+                    if (target->unit_id == 1){
                     map->player1_base = '0';
                     }
                     else {
