@@ -1090,7 +1090,6 @@ bool attempt_to_attack_unit(struct map_state *map, struct status_info *status, s
             write_attack_order(file_name, attacker->unit_id, target->unit_id);
 
             if (target->current_strenght <= 0){
-                // Calculate new distances ????????????????
                 attacker->busy = false;
                 free(attack_dist);
                 return true;
