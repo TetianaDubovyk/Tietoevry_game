@@ -11,7 +11,7 @@
 const struct unit_type* unit_types[] = {&knight, &swordsman, &archer, &pikeman, &catapult, &ram, &worker, &base}; 
 
 const int max_num_of_units = 1000;
-const int max_rounds = 150; // shold be 2000
+const int max_rounds = 2000;
 const int gold_player1 = 2000;
 const int gold_player2 = 2000;
 const int pl1_base_id = 1;
