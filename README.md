@@ -18,7 +18,7 @@ cd mediator
 ```
 then run the mediator program:
 ```
-.\mediator map.txt status.txt orders.txt [timelimit]
+./mediator.exe map.txt status.txt orders.txt [timelimit]
 ``````
 * "map.txt" contains a map for the game (max size of map is predefined in the header files for both programs)<br>
 * "status.txt" contains status and location of all available units<br>
