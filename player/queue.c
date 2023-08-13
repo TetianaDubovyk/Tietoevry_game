@@ -23,7 +23,7 @@ void enqueue(struct queue *queue, struct coordinates coord_value){
     el->next = NULL;
 
     if (queue->count == 0){
-        el->prev = NULL;        
+        el->prev = NULL;
         queue->head = el;
         queue->tail = queue->head;
     }
@@ -49,6 +49,8 @@ struct coordinates dequeue(struct queue *queue){
     if (queue->count > 1){
         queue->head = queue->head->next;
     }
+
+    free(temp);
 
     queue->count--;
     return val;

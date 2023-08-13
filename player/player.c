@@ -11,32 +11,34 @@ const struct unit_type* unit_types[] = {&knight, &swordsman, &archer, &pikeman, 
 
 int main(int argc, char *argv[]) { 
 
-    char char_time_limit;
-
-    // Check for provided params
+    // Check provided parameters
     if (argc > 5 || argc < 4) {
         printf("Usage: map.txt status.txt orders.txt timelimit(optional)"); 
         return -1;
     }
-    // Set the time limit to the given value
-    if (argc == 5) {
-        char_time_limit = *argv[4];
+
+    char map_file_name[PATH_MAX];
+    strcpy (map_file_name, argv[1]);
+    char status_file_name[PATH_MAX];
+    strcpy (status_file_name, argv[2]);
+    char orders_file_name[PATH_MAX];
+    strcpy (orders_file_name, argv[3]);
+
+    if (is_file_empty(status_file_name)){
+        printf("The status file is empty.\n");
+        return -1;
     }
-    else {
-        // Set the time limit to a default value
-        char_time_limit = '5'; 
+    else if (is_file_empty(map_file_name)){
+        printf("The map file is empty.\n");
+        return -1;
     }
 
-    char map_file_name[MAX_STRING_SIZE];
-    strcpy (map_file_name, argv[1]);
-    char status_file_name[MAX_STRING_SIZE];
-    strcpy (status_file_name, argv[2]);
-    char orders_file_name[MAX_STRING_SIZE];
-    strcpy (orders_file_name, argv[3]);
+    to_empty_orders_file(orders_file_name);
 
     // Load map file
     struct map_state* current_map = (struct map_state*) malloc(sizeof(struct map_state));
     if (!load_map(map_file_name, current_map)){
+        free(current_map);
         return -1;
     }
 
@@ -49,6 +51,9 @@ int main(int argc, char *argv[]) {
     // Load status file
     struct status_info* current_status = (struct status_info*) malloc(sizeof(struct status_info));
     if (!load_status(status_file_name, current_status, units)){
+        free(current_map);
+        free(units);
+        free(current_status);
         return -1;
     }
 
@@ -58,8 +63,6 @@ int main(int argc, char *argv[]) {
 
     // Update the amount of gold, based on the number of workers in mines
     update_gold(current_status, mines_result);
-
-    to_empty_orders_file(orders_file_name);
     
     // Fill the matrix of distances
     int *dist_beetween_cells = calculate_distances(current_map, current_map->map_height, current_map->map_width, current_status, total_units);
@@ -72,14 +75,12 @@ int main(int argc, char *argv[]) {
 
     // Find our base and the enemys base
     find_bases(current_status, our_base, enemy_base);
-
-    /*
-    Each turn contains a set of tasks in the following order:
-	- send workers to mines
-	- protect our base if it's in danger, we define the relative forces balance near our base and summon all appropriate units to the base and attack potential threats
-	- attack enemy base, we define our free units and send them to attack enemy base or its protectors
-	- build new unit if possible
-    */
+    
+    /* Each turn contains a set of tasks in the following order:
+    - send workers to mines
+    - protect our base if it's in danger, we define the relative forces balance near our base and summon all appropriate units to the base and attack potential threats
+    - attack enemy base, we define our free units and send them to attack enemy base or its protectors
+    - build new unit if possible */
     
     send_workers_to_mines(mines_result, current_map, current_status, dist_beetween_cells, mines_result, total_units, unit_types, orders_file_name);
 
@@ -89,12 +90,7 @@ int main(int argc, char *argv[]) {
 
     build_new_unit(current_status, our_base, unit_types, orders_file_name);
 
-    free(dist_beetween_cells);
-    free(our_base);
-    free(enemy_base);
-    free(current_status);
-    free(current_map);
-    free(mines_result);
+    free_memory(current_map, current_status, enemy_base, our_base, dist_beetween_cells, mines_result, units);
 
     return 0;
 }

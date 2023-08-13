@@ -2,13 +2,25 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
 #include <limits.h>
+#include <linux/limits.h>
 #include "game.h"
 
 
+const struct unit_type knight = {'K', 70, 5, 400, 1, 5};
+const struct unit_type swordsman = {'S', 60, 2, 250, 1, 3};
+const struct unit_type archer = {'A', 40, 2, 250, 5, 3};
+const struct unit_type pikeman = {'P', 50, 2, 200, 2, 3};
+const struct unit_type ram = {'R', 90, 2, 500, 1, 4};
+const struct unit_type catapult = {'C', 50, 2, 800, 7, 6};
+const struct unit_type worker = {'W', 20, 2, 100, 1, 2};
+const struct unit_type base = {'B', 200, 0};
+
+
 // Load map file
-bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
+bool load_map (char file_name[PATH_MAX], struct map_state *map){
 
     for (int i = 0; i < MAX_SIZE_OF_MAP; i++){
         for (int j = 0; j < MAX_SIZE_OF_MAP; j++){
@@ -28,59 +40,97 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
     map_file_ptr = fopen(file_name, "r");
 
     int j = 0;
-    int count_lenght = 0;
-    char *map_line = (char*)malloc(MAX_SIZE_OF_MAP);
+    char *map_line = (char*)calloc(MAX_SIZE_OF_MAP, sizeof(char));
     int mine_id = 0;
     int obstacle_id = 0;
-    int base_number = 0; 
+    int base_number = 0;
+    map->map_width = 0;
     map->player1_base = '0';
     map->player2_base = '0';
+    int read_line_length = 0;
 
 
     while(fgets(map_line, MAX_SIZE_OF_MAP, map_file_ptr)) {
 
-        map->map_width = strlen(map_line) - 2;
+        if (map->map_width == 0){
+            map->map_width = strlen(map_line) - 2;
+        }
+        
+        read_line_length = strlen(map_line) - 2;
+
+        if (read_line_length < map->map_width || read_line_length > map->map_width){
+            printf("The dimensions of the map are uneven.\n");
+            fclose(map_file_ptr);
+            free(map_line);
+            return false;
+        }
 
         for(int i = 0; i <= map->map_width; i++ ){
 
-            if (map_line[i] == '\n' && i < map->map_width){
-                printf("The dimensions of the map is uneven.\n");
-                return false;
-            }
+            map->map[j][i] = map_line[i];
 
-            map->map[count_lenght][i] = map_line[i];
-
-            if (map_line[i] == '1'){
+            if (map_line[i] == '1'){ 
+                if (map->player1_base == '1' && map->player2_base == '2'){
+                    printf("The number of bases on the map is bigger then 2.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false;
+                }
                 map->player1_base = '1';
                 map->bases[base_number].x = j;
                 map->bases[base_number].y = i;
                 base_number++;
             }
             else if (map_line[i] == '2'){
+                if (map->player1_base == '1' && map->player2_base == '2'){
+                    printf("The number of bases on the map is bigger then 2.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false;
+                }
                 map->player2_base = '2';
                 map->bases[base_number].x = j;
                 map->bases[base_number].y = i;
                 base_number++;
             }
-            // if found a mine
-            if (map_line[i] == '6'){
+            
+            else if (map_line[i] == '6'){
+                if (mine_id >MAX_MINES){
+                    printf("The number of mines on the map is bigger then the default value.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false; 
+                }
                 map->mines[mine_id].x = j;
                 map->mines[mine_id].y = i;
                 mine_id++;
             }
-            // if found an obstacle
-            if (map_line[i] == '9'){
+            
+            else if (map_line[i] == '9'){
+                if (obstacle_id >MAX_OBSTACLES){
+                    printf("The number of mines on the map is bigger then the default value.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false; 
+                }
                 map->obstacles[obstacle_id].x = j;
                 map->obstacles[obstacle_id].y = i;
                 obstacle_id++;
             }
+            else if (map_line[i] == '0'){
+                continue;
+            }
+            else {
+                printf("The map contains wrong characters.\n");
+                fclose(map_file_ptr);
+                free(map_line);
+                return false;
+            }
         }
-
-        count_lenght += 1;
         j++;
     }
 
-    map->map_height = count_lenght;
+    map->map_height = j;
     map->map_width += 1;
 
     fclose(map_file_ptr);
@@ -88,14 +138,61 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
     return true;
 }
 
-// Load status file
-bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, struct unit* units, char *curr_player){
+bool validate_status_file(char file_name[PATH_MAX]){
 
     // Load status file
     FILE *status_file_ptr;
     status_file_ptr = fopen(file_name, "r");
 
-    char status_line[MAX_STRING_SIZE];
+    char status_line[PATH_MAX];
+
+    // Patterns for reading
+    char curr_money[3] = "%u";
+    char status_base[30] = "%c %c %u %u %u %u %c";
+    char status_others[30] = "%c %c %u %u %u %u";
+
+    char player, unit_type;
+    char unit_type_being_built;
+    int unit_id, x, y, strength, curr_m;
+    int count_lines = 0;
+
+    while(fgets(status_line, PATH_MAX, status_file_ptr)){
+
+        count_lines++;
+
+        if (sscanf(status_line, status_base, &player, &unit_type, &unit_id, &x, &y, &strength, &unit_type_being_built) == 7){
+            if ((unit_type_being_built != '0') || (!validate_player_char(player)) || (!validate_unit_type(unit_type))){
+                fclose(status_file_ptr);
+                return false;
+            }
+        }
+        else if (sscanf(status_line, status_others, &player, &unit_type, &unit_id, &x, &y, &strength) == 6){
+            if ((!validate_player_char(player)) || (!validate_unit_type(unit_type))){
+                fclose(status_file_ptr);
+                return false;
+            }
+        }
+        else if (sscanf(status_line, curr_money, &curr_m) == 1){
+            continue;
+        }
+    }
+
+    if (count_lines < 2){
+        return false;
+    }
+
+    fclose(status_file_ptr);
+    return true;
+}
+
+// Load status file
+bool load_status (char file_name[PATH_MAX], struct status_info *status, struct unit* units, char *curr_player){
+
+    // Load status file
+    FILE *status_file_ptr;
+    status_file_ptr = fopen(file_name, "r");
+
+    char status_line[PATH_MAX];
 
     // Patterns for reading
     char curr_money[3] = "%u";
@@ -110,7 +207,7 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
     int count_units_pl1 = 0;
     int count_units_pl2 = 0;
     
-    while(fgets(status_line, MAX_STRING_SIZE, status_file_ptr)){
+    while(fgets(status_line, PATH_MAX, status_file_ptr)){
 
         // Money line
         if (sscanf(status_line, curr_money, &curr_m) == 1){
@@ -125,6 +222,12 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
         else {
             // Status of the bases
             if (sscanf(status_line, status_base, &player, &unit_type, &unit_id, &x, &y, &strength, &unit_type_being_built) == 7){
+
+                if (!validate_status_base_line_chars(player, unit_type, unit_type_being_built)){
+                    fclose(status_file_ptr);
+                    return false;
+                }
+
                 struct coordinates unit_coord;
                 unit_coord.x = x;
                 unit_coord.y = y;
@@ -132,6 +235,12 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
                 units[counter_row].player = player;
                 units[counter_row].unit_type = &base;
                 units[counter_row].unit_type_being_built = unit_type_being_built;
+                if (units[counter_row].unit_type_being_built == '0'){
+                    units[counter_row].time_to_build = 0;
+                }
+                else {
+                    units[counter_row].time_to_build = status->units[counter_row].time_to_build;
+                }
                 units[counter_row].unit_id = unit_id;
                 units[counter_row].coordinates = unit_coord;
                 units[counter_row].current_strenght = strength;
@@ -139,7 +248,13 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
                 counter_row++;
             }
             // Status of other units
-            else if (sscanf(status_line, status_others, &player, &unit_type, &unit_id, &x, &y, &strength) == 6){            
+            else if (sscanf(status_line, status_others, &player, &unit_type, &unit_id, &x, &y, &strength) == 6){     
+
+                if (!validate_player_char(player) || !validate_unit_type(unit_type)){
+                    fclose(status_file_ptr);
+                    return false;
+                }
+
                 struct coordinates unit_coord;
                 unit_coord.x = x;
                 unit_coord.y = y;
@@ -149,22 +264,22 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
                 if (unit_type == 'K'){
                     units[counter_row].unit_type = &knight;
                 }
-                if (unit_type == 'S'){
+                else if (unit_type == 'S'){
                     units[counter_row].unit_type = &swordsman;
                 }
-                if (unit_type == 'A'){
+                else if (unit_type == 'A'){
                     units[counter_row].unit_type = &archer;
                 }
-                if (unit_type == 'P'){
+                else if (unit_type == 'P'){
                     units[counter_row].unit_type = &pikeman;
                 }
-                if (unit_type == 'R'){
+                else if (unit_type == 'R'){
                     units[counter_row].unit_type = &ram;
                 }
-                if (unit_type == 'C'){
+                else if (unit_type == 'C'){
                     units[counter_row].unit_type = &catapult;
                 }
-                if (unit_type == 'W'){
+                else if (unit_type == 'W'){
                     units[counter_row].unit_type = &worker;
                 }
 
@@ -179,6 +294,7 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
             }
             else {
                 printf("The status file does not meet the requirements criteria.\n");
+                fclose(status_file_ptr);
                 return false;
             }
             
@@ -201,7 +317,7 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
 }
 
 // Check if file is empty
-bool is_file_empty(char file_name[MAX_STRING_SIZE]){
+bool is_file_empty(char file_name[PATH_MAX]){
 
     // Open a file
     FILE *fp;
@@ -220,7 +336,56 @@ bool is_file_empty(char file_name[MAX_STRING_SIZE]){
     return size == 0;
 }
 
-bool write_first_status_file(struct map_state *map_ptr, char file_name[MAX_STRING_SIZE]){
+bool validate_status_base_line_chars(char player, char unit_type, char unit_type_being_built){
+
+    if (!validate_player_char(player)){
+        printf("The status file contains invalid character of a player.\n");
+        return false;
+    }
+
+    if (unit_type_being_built == '0'){
+        if (!validate_unit_type(unit_type)){
+            return false;
+        }
+    }
+    else {
+        if (!validate_unit_type(unit_type) || !validate_unit_type(unit_type_being_built)){
+            printf("The status file contains invalid unit types.\n");
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+bool validate_player_char(char p){
+
+    char players[] = "PE";
+
+    if ((p != players[0] && p != players[1]) || (isalpha(p) == 0)){
+        return false;
+    }
+
+    return true;
+}
+
+bool validate_unit_type(char type){
+
+    if (isalpha(type) != 0){
+
+        char char_types[] = "KSAPCRWB";
+
+        for (int i = 0; i < strlen(char_types); i++){
+            if (type == char_types[i]){
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool write_first_status_file(struct map_state *map_ptr, char file_name[PATH_MAX]){
 
     FILE *status_f;
     status_f = fopen(file_name, "w" );
@@ -231,9 +396,11 @@ bool write_first_status_file(struct map_state *map_ptr, char file_name[MAX_STRIN
     fwrite(default_gold, 1, strlen(default_gold),status_f );
     fwrite(new_line, 1, strlen(new_line), status_f);
 
-    char *base_x = (char*)malloc(sizeof(char));
-    char *base_y = (char*)malloc(sizeof(char));
-    char *base_res = (char*)malloc(sizeof(char));
+    char pattern[] = "%c %c %c %s %s %s %c";
+
+    char *base_x = (char*)malloc(2 * sizeof(int));
+    char *base_y = (char*)malloc(2 * sizeof(int));
+    char *base_res = (char*)malloc(2 * sizeof(pattern));
 
     char player1 = 'P';
     char player2 = 'E';
@@ -247,10 +414,10 @@ bool write_first_status_file(struct map_state *map_ptr, char file_name[MAX_STRIN
         sprintf(base_y, "%d", map_ptr->bases[index].y);
 
         if (index == 0){
-            sprintf(base_res, "%c %c %c %s %s %s %c", player1, base_notation, unit_id, base_x, base_y, health, type_to_buid);
+            sprintf(base_res, pattern, player1, base_notation, unit_id, base_x, base_y, health, type_to_buid);
         }
         else if (index == 1){
-            sprintf(base_res, "%c %c %c %s %s %s %c", player2, base_notation, unit_id, base_x, base_y, health, type_to_buid);
+            sprintf(base_res, pattern, player2, base_notation, unit_id, base_x, base_y, health, type_to_buid);
         }
         
         fwrite(base_res, 1, strlen(base_res), status_f);
@@ -267,13 +434,13 @@ bool write_first_status_file(struct map_state *map_ptr, char file_name[MAX_STRIN
 }
 
 // Read the orders file, change the status and the map if needed
-bool load_orders (char file_name[MAX_STRING_SIZE], char *player, struct status_info *status, struct map_state *map, int num_of_units, const struct unit_type* unittypes[]){
+bool load_orders (char file_name[PATH_MAX], char *player, struct status_info *status, struct map_state *map, int num_of_units, const struct unit_type* unittypes[]){
 
     // Open orders file
     FILE *orders_file_ptr;
     orders_file_ptr = fopen(file_name, "r");
 
-    char orders_line[10];
+    char orders_line[30];
 
     // Patterns for reading
     char move_unit[20] = "%u M %u %u";
@@ -286,7 +453,7 @@ bool load_orders (char file_name[MAX_STRING_SIZE], char *player, struct status_i
     char unit_to_build;
 
     // Read orders file
-    while(fgets(orders_line, 10, orders_file_ptr)){
+    while(fgets(orders_line, 30, orders_file_ptr)){
 
         // Move
         if (sscanf(orders_line, move_unit, &id1, &x, &y) == 3){
@@ -336,14 +503,14 @@ bool move(struct status_info *status, int id1, int x, int y, int num_of_units, c
 
             // Check if unit is a base 
             if (status->units[i].unit_type->notation == 'B'){ 
-                printf("The type of a unit: %c cannot move, only build! '%s' has been disqualified!\n", status->units[i].unit_type->notation, player);
+                printf("The type of a unit: %c cannot move, only build. '%s' has been disqualified!\n", status->units[i].unit_type->notation, player);
                 print_winner(player);
                 return false;
             }
 
             // Validate the given coordinates 
             if (!check_map_range(x, y, map)){
-                printf("The coordinates is out of map range. The action is impossible. '%s' has been disqualified!\n", player);
+                printf("The coordinates is out of the map range. The action is impossible. '%s' has been disqualified!\n", player);
                 print_winner(player);
                 return false;
             }
@@ -465,7 +632,8 @@ bool build(struct status_info *status, int id, char unit_to_build, int num_of_un
 // Function to attack a unit 
 bool attack(struct status_info *status, int id1, int id2, int num_of_units, char *player, struct map_state *map, const struct unit_type* unittypes[]){
 
-    int attacker_status_number, target_status_number;
+    int attacker_status_number = 0;
+    int target_status_number = 0;
 
     struct unit *target = (struct unit*) malloc(sizeof(struct unit));
     struct unit *attacker = (struct unit*) malloc(sizeof(struct unit));
@@ -487,13 +655,17 @@ bool attack(struct status_info *status, int id1, int id2, int num_of_units, char
                     if (attacker->unit_type->notation == 'B'){ 
                         printf("The type of a unit: %c cannot attack, only build. '%s' has been disqualified!\n", attacker->unit_type->notation, player);
                         print_winner(player);
+                        free(target);
+                        free(attacker);
                         return false;
                     }
 
                     // If attack is on the own unit
                     if (attacker->unit_id == target->unit_id || attacker->player == target->player){
-                        printf("Attacking the own unit! '%s' has been disqualified!\n", id1, player);
+                        printf("Attacking our own unit! '%s' has been disqualified!\n", player);
                         print_winner(player);
+                        free(target);
+                        free(attacker);
                         return false;
                     }
                     
@@ -504,6 +676,8 @@ bool attack(struct status_info *status, int id1, int id2, int num_of_units, char
                 if (j == (num_of_units - 1)){
                     printf("Attacker unit of id:%d cannot be found. '%s' has been disqualified!\n", id1, player);
                     print_winner(player);
+                    free(target);
+                    free(attacker);
                     return false;
                 }
             }
@@ -513,6 +687,8 @@ bool attack(struct status_info *status, int id1, int id2, int num_of_units, char
         if (i == (num_of_units - 1)){
             printf("Target unit of id:%d cannot be found. '%s' has been disqualified!\n", id2, player);
             print_winner(player);
+            free(target);
+            free(attacker);
             return false;
         }
     }
@@ -524,6 +700,8 @@ bool attack(struct status_info *status, int id1, int id2, int num_of_units, char
     if (reach_distance > attacker->unit_type->range_of_attack){
         printf("The attack is impossible. The given coordinates is out of the units reach.\n");
         print_winner(player);
+        free(target);
+        free(attacker);
         return false;
     }
     // If attack is posiible
@@ -586,7 +764,7 @@ bool is_coordinates_taken(struct status_info *status, int x, int y, int num_of_u
 
 // Check if the coordinates for a move is out of map range
 bool check_map_range(int x, int y, struct map_state *map_ptr){
-    return (x >= 0 && x < map_ptr->map_height && y >= 0 && y <= map_ptr->map_width + 1);
+    return (x >= 0 && x < map_ptr->map_height && y >= 0 && y < map_ptr->map_width + 1); // changed to < map_width, from <=
 }
 
 // Check if a mine on the coordinates
@@ -599,7 +777,7 @@ bool is_mine(int x, int y, struct map_state *map_ptr){
     return false;
 }
 
-// Check if base on the coordinates
+// Check if a base on the coordinates
 bool is_base(int x, int y, struct map_state *map_ptr){
     for(int b = 0; b < 2; b++){
         if (map_ptr->bases[b].x == x && map_ptr->bases[b].y == y){
@@ -609,15 +787,15 @@ bool is_base(int x, int y, struct map_state *map_ptr){
     return false;
 }
 
-// Check if obstacle on the coordinates
+// Check if an obstacle on the coordinates
 bool is_obstacle(int x, int y, struct map_state *map_ptr){
 
-    int len_obst = sizeof(map_ptr->obstacles) / sizeof(map_ptr->obstacles[0]);
-
-    for(int obst = 0; obst < len_obst; obst++){
-        if (map_ptr->obstacles[obst].x == x && map_ptr->obstacles[obst].y == y){
+    int i = 0;
+    while (map_ptr->obstacles[i].x != -1 && map_ptr->obstacles[i].y != -1){
+        if (map_ptr->obstacles[i].x == x && map_ptr->obstacles[i].y == y){
             return true;
         }
+        i++;
     }
     return false;
 }
@@ -633,7 +811,7 @@ bool find_bases(struct status_info *status, int *total_num_of_units, const struc
 
         // For player #1
         if (status->units[i].unit_id == id1){
-            if (is_base_busy(status, i, id1, total_num_of_units, unittypes, player)){
+            if (is_base_busy(status, i, id1, *total_num_of_units, unittypes, player)){
                 // Update the total number of units
                 *total_num_of_units = status->number_of_units_player1 + status->number_of_units_player2;
             }
@@ -641,7 +819,7 @@ bool find_bases(struct status_info *status, int *total_num_of_units, const struc
         }
         // For player #2
         if (status->units[i].unit_id == id2){
-            if (is_base_busy(status, i, id2, total_num_of_units, unittypes, player)){
+            if (is_base_busy(status, i, id2, *total_num_of_units, unittypes, player)){
                 *total_num_of_units = status->number_of_units_player1 + status->number_of_units_player2;
             }
             continue;
@@ -657,7 +835,7 @@ bool find_bases(struct status_info *status, int *total_num_of_units, const struc
 }
 
 // Check if base is done producing a new unit, update units
-bool is_base_busy(struct status_info *status, int unit, int id, int *total_num_of_units, const struct unit_type* unittypes[], char player[]){
+bool is_base_busy(struct status_info *status, int unit, int id, int total_num_of_units, const struct unit_type* unittypes[], char player[]){
 
     // Update base if it is produces new units
     if (status->units[unit].unit_id == id && status->units[unit].time_to_build >= 1){
@@ -668,10 +846,10 @@ bool is_base_busy(struct status_info *status, int unit, int id, int *total_num_o
             
             int ids_counter = 0;
             int id_tepm = 0;
-            int next_unit = *total_num_of_units;
+            int next_unit = total_num_of_units;
 
             if (id == 1){
-                for (int i = 0; i < *total_num_of_units; i++){
+                for (int i = 0; i < total_num_of_units; i++){
                     if (status->units[i].unit_id % 2 == 1){
                         id_tepm = status->units[i].unit_id;
                         if (ids_counter < id_tepm){
@@ -682,7 +860,7 @@ bool is_base_busy(struct status_info *status, int unit, int id, int *total_num_o
                 status->number_of_units_player1++;
             }
             else {
-                for (int i = 0; i < *total_num_of_units; i++){
+                for (int i = 0; i < total_num_of_units; i++){
                     if (status->units[i].unit_id % 2 == 0){
                         id_tepm = status->units[i].unit_id;
                         if (ids_counter < id_tepm){
@@ -714,16 +892,21 @@ bool is_base_busy(struct status_info *status, int unit, int id, int *total_num_o
 }
 
 // Count the total number of units
-int get_total_number_of_units(char file_name[MAX_STRING_SIZE]){
+int get_total_number_of_units(char file_name[PATH_MAX]){
 
     int units_counter = -1;
 
     // Load status file
     FILE *status_file;
-    status_file = fopen(file_name, "r");
-    char status_line[MAX_STRING_SIZE];
 
-    while(fgets(status_line, MAX_STRING_SIZE, status_file)){
+    status_file = fopen(file_name, "r");
+    char status_line[PATH_MAX];
+
+    if (status_file == NULL){
+        return 0;
+    }
+
+    while(fgets(status_line, PATH_MAX, status_file)){
         units_counter++;
     }
 
@@ -815,7 +998,7 @@ char swap_players(char *current_p, char units_p){
 void add_gold(struct status_info *status){
 
     if (status->player1_workers_in_mine >= 1){
-            status->player1_gold = status->player1_gold + status->player1_workers_in_mine * 50;
+        status->player1_gold = status->player1_gold + status->player1_workers_in_mine * 50;
     }
     if (status->player2_workers_in_mine >= 1){
         status->player2_gold = status->player2_gold + status->player2_workers_in_mine * 50;
@@ -823,23 +1006,25 @@ void add_gold(struct status_info *status){
 }
 
 // Write current status of units into a status file
-void rewrite_status_file(char file_name[MAX_STRING_SIZE], struct status_info *status, int num_of_units, char player[]){
+void rewrite_status_file(char file_name[PATH_MAX], struct status_info *status, int num_of_units, char player[]){
 
-    char *gold = (char*)malloc(sizeof(char));
+    char *gold = (char*)malloc(2 * sizeof(int));
     if (strcmp(player, P) == 0){
         sprintf(gold, "%d", status->player2_gold);
     }
     else {
         sprintf(gold, "%d", status->player1_gold);
     }
-    char pl, u_notation, u_type_built;
+    char pl = 'P';
+    char u_notation = 'K';
+    char u_type_built = 'K';
 
-    char *unitid = (char*)malloc(sizeof(char));
-    char *ch_x = (char*)malloc(sizeof(char));
-    char *ch_y = (char*)malloc(sizeof(char));
-    char *h = (char*)malloc(4 * sizeof(char));
-    char *base_result = (char*)malloc(sizeof(char));
-    char *result = (char*)malloc(sizeof(char));
+    char *unitid = (char*)malloc(2 * sizeof(int));
+    char *ch_x = (char*)malloc(2 * sizeof(int));
+    char *ch_y = (char*)malloc(2 * sizeof(int));
+    char *h = (char*)malloc(2 * sizeof(int));
+    char *base_result = (char*)malloc(7 * sizeof(int));
+    char *result = (char*)malloc(6 * sizeof(int));
     char new_line[] = "\n";
 
     FILE *st_file;
@@ -886,6 +1071,14 @@ void rewrite_status_file(char file_name[MAX_STRING_SIZE], struct status_info *st
         }
     }
 
+    free(gold);
+    free(unitid);
+    free(ch_x);
+    free(ch_y);
+    free(h);
+    free(base_result);
+    free(result);
+
     fclose(st_file);
 }
 
@@ -903,65 +1096,75 @@ bool run_player_program(struct status_info *status, char *map_file, char *status
         int_time_limit = limit;
     }
     
+    char player_program[100] = "/home/tati/Downloads/Tietoevry_game-main/mediator/player.exe";
+    char player_argv[PATH_MAX];
+
+    char *time_lim = (char*)malloc(sizeof(time_lim));
+    sprintf(time_lim, "%d", int_time_limit);
+    sprintf(player_argv, "%s %s %s %s %s", player_program, map_file, status_file, orders_file, time_lim);
+
     // Set timer
-    time_t start, end;
-    start = clock();
+    int result = 0;
+    int start = 0;
+    int end = 0;
 
+    time_t t = time(NULL);
+    if(t != (time_t)(-1)){
+        start = gmtime(&t)->tm_sec;
+    }
+    
     // Run player program
-    char player_program[MAX_STRING_SIZE] = "player.exe";
-    char player_argv[_MAX_PATH];
-
-    char *t = (char*)malloc(sizeof(t));
-    sprintf(t, "%d", int_time_limit);
-
-    sprintf(player_argv, "%s %s %s %s %s", player_program, map_file, status_file, orders_file, t);
-
     int status_code = 0;
     status_code = system(player_argv);
 
+    t = time(NULL);
+    if(t != (time_t)(-1)){
+        end = gmtime(&t)->tm_sec;
+    }
+
     if (status_code == -1){
         printf("Something went wrong. Player couldn't make his move.");
+        free(time_lim);
         return false;
     }
     else {
-        end = clock();
-        int time_running = (end-start)/CLOCKS_PER_SEC;
 
-        if (time_running > int_time_limit){
+        result += (end-start);
+
+        if (result > int_time_limit){
             printf("Time limit exceeded. %s is disqualified.\n", player);
-            printf("Press Enter to Continue\n");  
-            getchar();
-            
+            free(time_lim);
             return false;
         }
     }
     
+    free(time_lim);
     return true;
 }
 
 // Get the winner, based on player bases and moves
-bool game_over (int round, int max_rounds, int units_player1, int units_player2, char player1_base, char player2_base){
+bool game_over (int round, int max_rounds, struct status_info *status, struct map_state *map){
     
     // If one of the bases is missing
-    if (player1_base == '1' && player2_base == '0'){
+    if (map->player1_base == '1' && map->player2_base == '0'){
         printf("The enemy base is defeated. Game over! Player #1 wins!\n");
         return true;
     }
-    else if (player2_base == '2' && player1_base == '0'){
+    else if (map->player2_base == '2' && map->player1_base == '0'){
         printf("The enemy base is defeated. Game over! Player #2 wins!\n");
         return true;
     }
 
     // If the maximum number of moves reached
     if (round >= max_rounds){
-        printf("Game is over, the maximum number of moves reached. ");
+        printf("Game is over, the maximum number of moves are reached. \n");
 
-        if (units_player1 > units_player2){
-            printf("The winner is Player #1, with maximum number of units:%d.\n", units_player1);
+        if (status->number_of_units_player1 > status->number_of_units_player2){
+            printf("The winner is Player #1, with maximum number of units:%d.\n", status->number_of_units_player1);
             return true;
         }
-        else if (units_player1 < units_player2){
-            printf("The winner is Player #2, with maximum number of units:%d.\n", units_player2);
+        if (status->number_of_units_player1 < status->number_of_units_player2){
+            printf("The winner is Player #2, with maximum number of units:%d.\n", status->number_of_units_player2);
             return true;
         }
         else {
@@ -971,4 +1174,12 @@ bool game_over (int round, int max_rounds, int units_player1, int units_player2,
     }
 
     return false;
+}
+
+void free_memory (struct status_info *status, struct map_state *map, struct unit *unit){
+
+    free(status);
+    free(map);
+    free(unit);
+
 }

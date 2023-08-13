@@ -2,14 +2,27 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 #include <float.h>
 #include <math.h>
+#include <limits.h>
+#include <linux/limits.h>
 #include "player_game.h"
 #include "queue.h"
 
 
+const struct unit_type knight = {'K', 70, 5, 400, 1, 5};
+const struct unit_type swordsman = {'S', 60, 2, 250, 1, 3};
+const struct unit_type archer = {'A', 40, 2, 250, 5, 3};
+const struct unit_type pikeman = {'P', 50, 2, 200, 2, 3};
+const struct unit_type ram = {'R', 90, 2, 500, 1, 4};
+const struct unit_type catapult = {'C', 50, 2, 800, 7, 6};
+const struct unit_type worker = {'W', 20, 2, 100, 1, 2};
+const struct unit_type base = {'B', 200, 0};
+
+
 // Load map file
-bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
+bool load_map (char file_name[PATH_MAX], struct map_state *map){
 
     for (int i = 0; i < MAX_SIZE_OF_MAP; i++){
         for (int j = 0; j < MAX_SIZE_OF_MAP; j++){
@@ -22,7 +35,6 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
         map->mines[i].y = UNREACHABLE_DISTANCE;
         map->obstacles[i].x = UNREACHABLE_DISTANCE;
         map->obstacles[i].y = UNREACHABLE_DISTANCE;
-
     }
 
     // Load map file
@@ -32,51 +44,92 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
     int j = 0;
     int count_mines = 0;
     int count_obstacles = 0;
-    char *map_line = (char*)malloc(MAX_SIZE_OF_MAP);
+    char *map_line = (char*)calloc(MAX_SIZE_OF_MAP, sizeof(char));
     int mine_id = 0;
     int obstacle_id = 0;
-    int base_number = 0; 
+    int base_number = 0;
+    map->map_width = 0;
     map->player1_base = '0';
     map->player2_base = '0';
+    int read_line_length = 0;
 
     while(fgets(map_line, MAX_SIZE_OF_MAP, map_file_ptr)) {
 
-        map->map_width = strlen(map_line) - 2;
+        if (map->map_width == 0){
+            map->map_width = strlen(map_line) - 2;
+        }
+        
+        read_line_length = strlen(map_line) - 2;
+
+        if (read_line_length < map->map_width || read_line_length > map->map_width){
+            printf("The dimensions of the map are uneven.\n");
+            fclose(map_file_ptr);
+            free(map_line);
+            return false;
+        }
 
         for(int i = 0; i <= map->map_width; i++ ){
-
-            if (map_line[i] == '\n' && i < map->map_width){
-                printf("The dimensions of the map is uneven.\n");
-                return false;
-            }
 
             map->map[j][i] = map_line[i];
 
             if (map_line[i] == '1'){
+                if (map->player1_base == '1' && map->player2_base == '2'){
+                    printf("The number of bases on the map is bigger then 2.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false;
+                }
                 map->player1_base = '1';
                 map->bases[base_number].x = j;
                 map->bases[base_number].y = i;
                 base_number++;
             }
             else if (map_line[i] == '2'){
+                if (map->player1_base == '1' && map->player2_base == '2'){
+                    printf("The number of bases on the map is bigger then 2.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false;
+                }
                 map->player2_base = '2';
                 map->bases[base_number].x = j;
                 map->bases[base_number].y = i;
                 base_number++;
             }
-            // if found a mine
-            if (map_line[i] == '6'){
+            
+            else if (map_line[i] == '6'){
+                if (count_mines >MAX_MINES){
+                    printf("The number of mines on the map is bigger then default value.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false; 
+                }
                 map->mines[mine_id].x = j;
                 map->mines[mine_id].y = i;
                 mine_id++;
                 count_mines++;
             }
-            // if found an obstacle
-            if (map_line[i] == '9'){
+            
+            else if (map_line[i] == '9'){
+                if (count_obstacles >MAX_OBSTACLES){
+                    printf("The number of mines on the map is bigger then default value.\n");
+                    fclose(map_file_ptr);
+                    free(map_line);
+                    return false; 
+                }
                 map->obstacles[obstacle_id].x = j;
                 map->obstacles[obstacle_id].y = i;
                 obstacle_id++;
                 count_obstacles++;
+            }
+            else if (map_line[i] == '0'){
+                continue;
+            }
+            else {
+                printf("The map contains wrong characters.\n");
+                fclose(map_file_ptr);
+                free(map_line);
+                return false;
             }
         }
         j++;
@@ -92,8 +145,28 @@ bool load_map (char file_name[MAX_STRING_SIZE], struct map_state *map){
     return true;
 }
 
+// Check if file is empty
+bool is_file_empty(char file_name[PATH_MAX]){
+
+    // Open a file
+    FILE *fp;
+    fp = fopen(file_name, "r");
+
+    if (fp == NULL) {
+        printf("Cannot open a file: %s.\n", file_name);
+        fclose(fp);
+        return false;
+    }
+
+    fseek (fp, 0, SEEK_END);
+    int size = ftell(fp);
+    fclose(fp);
+
+    return size == 0;
+}
+
 // Load status file
-bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, struct unit* units){
+bool load_status (char file_name[PATH_MAX], struct status_info *status, struct unit* units){
 
     // Load status file
     FILE *status_file_ptr;
@@ -101,24 +174,27 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
 
     if(status_file_ptr == NULL) {
         printf("Cannot open a file: %s.\n", file_name);
+        fclose(status_file_ptr);
         return false;
     }
 
-    char status_line[MAX_STRING_SIZE];
+    char status_line[PATH_MAX];
 
     // Patterns for reading
-    char curr_money[3] = "%u";
-    char status_base[30] = "%c %c %u %u %u %u %c";
-    char status_others[30] = "%c %c %u %u %u %u %c";
+    char curr_money[] = "%u";
+    char status_base[] = "%c %c %u %u %u %u %c";
+    char status_others[] = "%c %c %u %u %u %u";
 
-    char player, unit_type;
-    char unit_type_being_built;
-    int unit_id, x, y, strength, curr_m;
+    char player = '0';
+    char unit_type = '0';
+    char unit_type_being_built = '0';
+    int unit_id = 0; int x = 0; int y = 0;
+    int strength = 0; int curr_m = 0;
     int counter_row = 0;
 
     int count_units = 0;
     
-    while(fgets(status_line, MAX_STRING_SIZE, status_file_ptr)){
+    while(fgets(status_line, PATH_MAX, status_file_ptr)){
 
         // Money line
         if (sscanf(status_line, curr_money, &curr_m) == 1){
@@ -128,6 +204,12 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
         else {
             // Status of the bases
             if (sscanf(status_line, status_base, &player, &unit_type, &unit_id, &x, &y, &strength, &unit_type_being_built) == 7){
+
+                if (!validate_status_base_line_chars(player, unit_type, unit_type_being_built)){
+                    fclose(status_file_ptr);
+                    return false;
+                }
+
                 struct coordinates unit_coord;
                 unit_coord.x = x;
                 unit_coord.y = y;
@@ -135,6 +217,7 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
                 units[counter_row].player = player;
                 units[counter_row].unit_type = &base;
                 units[counter_row].unit_type_being_built = unit_type_being_built;
+                units[counter_row].time_to_build = 0;
                 units[counter_row].unit_id = unit_id;
                 units[counter_row].coordinates = unit_coord;
                 units[counter_row].current_strenght = strength;
@@ -145,7 +228,13 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
                 counter_row++;
             }
             // Status of other units
-            else if (sscanf(status_line, status_others, &player, &unit_type, &unit_id, &x, &y, &strength) == 6){            
+            else if (sscanf(status_line, status_others, &player, &unit_type, &unit_id, &x, &y, &strength) == 6){     
+
+                if (!validate_player_char(player) || !validate_unit_type(unit_type)){
+                    fclose(status_file_ptr);
+                    return false;
+                }
+
                 struct coordinates unit_coord;
                 unit_coord.x = x;
                 unit_coord.y = y;
@@ -188,6 +277,7 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
             }
             else {
                 printf("The status file does not meet the requirements criteria.\n");
+                fclose(status_file_ptr);
                 return false;
             }
             // Count the number of units
@@ -201,6 +291,56 @@ bool load_status (char file_name[MAX_STRING_SIZE], struct status_info *status, s
 
     fclose(status_file_ptr);
     return true;
+}
+
+
+bool validate_status_base_line_chars(char player, char unit_type, char unit_type_being_built){
+
+    if (!validate_player_char(player)){
+        printf("The status file contains invalid character of a player.\n");
+        return false;
+    }
+
+    if (unit_type_being_built == '0'){
+        if (!validate_unit_type(unit_type)){
+            return false;
+        }
+    }
+    else {
+        if (!validate_unit_type(unit_type) || !validate_unit_type(unit_type_being_built)){
+            printf("The status file contains invalid unit types.\n");
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+bool validate_player_char(char p){
+
+    char players[] = "PE";
+
+    if ((p != players[0] && p != players[1]) || (isalpha(p) == 0)){
+        return false;
+    }
+
+    return true;
+}
+
+bool validate_unit_type(char type){
+
+    if (isalpha(type) != 0){
+
+        char char_types[] = "KSAPCRWB";
+
+        for (int i = 0; i < strlen(char_types); i++){
+            if (type == char_types[i]){
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // Find data about all mines
@@ -290,6 +430,7 @@ int* calculate_distances(struct map_state *map, int height, int width, struct st
             for (int k = 0; k < height * width; k++){
                 all_distances[get_index_for_2d_array(i * width + j, k, height * width)] = current_distances[get_index_for_2d_array(k / width, k % width, width)];
             }
+            free(current_distances);
         }
     }
     
@@ -299,7 +440,7 @@ int* calculate_distances(struct map_state *map, int height, int width, struct st
 // Breadth-first search algorithm, considering obstacles and units of the opponent
 int* bfs(struct map_state *map, int row, int column, int height, int width, struct status_info *status, int num_of_units, int allowed_moves, bool bfs_for_attack){
     
-    int* distances = allocate_2d_int_array(height, width);
+    int* distances = (int*)malloc(height * width * sizeof(int));
 
     bool visited[height][width];
 
@@ -343,13 +484,14 @@ int* bfs(struct map_state *map, int row, int column, int height, int width, stru
 
         // Checking position adjusted horizontally or vertically
         for (int i = 0; i < 4; i++){
+
             if (!allowed_moves_reached){
                 n.x = cell_coord.x + row_directions[i];
                 n.y = cell_coord.y + column_directions[i];
 
                 bool is_coord_taken = is_coordinates_taken(status, n.x, n.y, num_of_units);
 
-                //Checking if current adjusted position is on the map, is not vistited before, and, if it's considered as obstacle, can be "jumped over"
+                // Checking if current adjusted position is on the map, is not vistited before, and, if it's considered as obstacle, can be "jumped over"
                 if (check_map_range(n.x, n.y, map) && (!visited[n.x][n.y])){
                     if (!((is_obstacle(n.x, n.y, map) || is_coord_taken || is_mine(n.x, n.y, map)) && (distances[cell_coord.x * width + cell_coord.y] + 1 > allowed_moves))){
                         distances[n.x * width + n.y] = distances[cell_coord.x * width + cell_coord.y] + 1;
@@ -362,6 +504,8 @@ int* bfs(struct map_state *map, int row, int column, int height, int width, stru
 
         visited[cell_coord.x][cell_coord.y] = true;
     }
+
+    free(que);
 
     // If counting bfs for attack 
     if (bfs_for_attack){
@@ -392,8 +536,6 @@ int* bfs(struct map_state *map, int row, int column, int height, int width, stru
             }
         }
     }
-
-    free(que);
 
     return distances;
 }
@@ -442,7 +584,6 @@ int* bfs_for_workers(struct map_state *map, struct check_mine_result *result, in
 
         bool allowed_moves_reached = false;
         allowed_moves_reached = distances[cell_coord.x * width + cell_coord.y] >= allowed_moves;
-
 
         // Checking position adjusted horizontally or vertically
         for (int i = 0; i < 4; i++){
@@ -504,7 +645,7 @@ bool is_coord_our_mine(int r, int c, struct check_mine_result *result){
 }
 
 // Count the total number of units
-int get_total_number_of_units(char file_name[MAX_STRING_SIZE]){
+int get_total_number_of_units(char file_name[PATH_MAX]){
 
     // Subtract the first line with the gold data
     int units_counter = -1;
@@ -512,9 +653,9 @@ int get_total_number_of_units(char file_name[MAX_STRING_SIZE]){
     // Load status file
     FILE *status_file;
     status_file = fopen(file_name, "r");
-    char status_line[MAX_STRING_SIZE];
+    char status_line[PATH_MAX];
 
-    while(fgets(status_line, MAX_STRING_SIZE, status_file)){
+    while(fgets(status_line, PATH_MAX, status_file)){
         units_counter++;
     }
 
@@ -580,7 +721,7 @@ bool is_coordinates_taken(struct status_info *status, int x, int y, int num_of_u
 
 // Check if the coordinates for a move is within map range
 bool check_map_range(int x, int y, struct map_state *map){
-    return (x >= 0 && x < map->map_height && y >= 0 && y <= map->map_width);
+    return (x >= 0 && x < map->map_height && y >= 0 && y < map->map_width);
 }
 
 // Check if a mine on the coordinates
@@ -597,7 +738,7 @@ bool is_mine(int x, int y, struct map_state *map){
 bool is_obstacle(int x, int y, struct map_state *map){
 
     for(int obst = 0; obst < map->num_of_obstacles; obst++){
-        if (map->obstacles[obst].x == x && map->obstacles[obst].y == y && map->map[x][y] == '9'){
+        if ((map->obstacles[obst].x == x && map->obstacles[obst].y == y )&& (map->map[x][y] == '9')){
             return true;
         }
     }
@@ -684,7 +825,10 @@ double get_weightened_strength_for_unit_type(const struct unit_type* unit_t, con
 
 // Gets the distance between 2 positions in the map, considering obstacles e.t.c.
 int get_reachable_distance(struct coordinates position1, struct coordinates position2, int height, int width, int* dist){
-    return dist[get_index_for_2d_array(position1.x * width + position1.y, position2.x * width + position2.y, height * width)];
+    
+    int index = get_index_for_2d_array(position1.x * width + position1.y, position2.x * width + position2.y, height * width);
+
+    return dist[index];
 }
 
 /*
@@ -710,7 +854,7 @@ void vulnerability_factor(struct status_info *status, struct map_state *map, con
                 status->units[j].weightened_strenght = get_weightened_strength(status, status->units[j], un_types);
                 int reachable_distance = get_reachable_distance(status->units[j].coordinates, status->units[i].coordinates, height, width, dist);
                 
-                int num_of_turns_to_attack = ceil(reachable_distance - (double)(status->units[j].unit_type->range_of_attack) / (double)(status->units[j].unit_type->speed));
+                int num_of_turns_to_attack = (int)ceil(reachable_distance - (double)(status->units[j].unit_type->range_of_attack) / (double)(status->units[j].unit_type->speed));
 
                 if (num_of_turns_to_attack < 1){
                     num_of_turns_to_attack = 1;
@@ -731,23 +875,23 @@ void vulnerability_factor(struct status_info *status, struct map_state *map, con
     }
 }
 
-void to_empty_orders_file(char file_name[MAX_STRING_SIZE]){
+void to_empty_orders_file(char file_name[PATH_MAX]){
     FILE *f;
     f = fopen(file_name, "w" ); 
     fclose(f);
 }
 
 // Write the orders into a file
-bool write_move_order(char file_name[MAX_STRING_SIZE], int id, int x, int y){
+bool write_move_order(char file_name[PATH_MAX], int id, int x, int y){
 
     FILE *orders_f;
     orders_f = fopen(file_name, "a");
 
-    char *move_result = (char*)malloc(sizeof(move_result));
+    char *move_result = (char*)malloc(4 * sizeof(int));
     char new_line[] = "\n";
 
     // Pattern
-    char move_unit[20] = "%u M %u %u";
+    char move_unit[30] = "%u M %u %u";
 
     sprintf(move_result, move_unit, id, x, y);
 
@@ -760,12 +904,12 @@ bool write_move_order(char file_name[MAX_STRING_SIZE], int id, int x, int y){
     return true;
 }
 
-bool write_attack_order(char file_name[MAX_STRING_SIZE], int id_attacker, int id_target){
+bool write_attack_order(char file_name[PATH_MAX], int id_attacker, int id_target){
 
     FILE *orders_f;
     orders_f = fopen(file_name, "a");
 
-    char *attack_result = (char*)malloc(sizeof(attack_result));
+    char *attack_result = (char*)malloc(3 * sizeof(int));
     char attack_unit[20] = "%u A %u";
     char new_line[] = "\n";
 
@@ -780,12 +924,12 @@ bool write_attack_order(char file_name[MAX_STRING_SIZE], int id_attacker, int id
     return true;
 }
 
-bool write_build_order(char file_name[MAX_STRING_SIZE], int base_id, char type){
+bool write_build_order(char file_name[PATH_MAX], int base_id, char type){
 
     FILE *orders_f;
     orders_f = fopen(file_name, "a");
 
-    char *build_result = (char*)malloc(sizeof(build_result));
+    char *build_result = (char*)malloc(2 * sizeof(int));
     char build_unit[20] = "%u B %c";
     char new_line[] = "\n";
 
@@ -820,13 +964,12 @@ struct unit find_target_near_mine(struct check_mine_result *mines_data,  struct 
     return status->units[id];
 }
 
-bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_state *map, struct status_info *status, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_state *map, struct status_info *status, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     int units[num_of_units];
     bool enemy_unit = true;
     int number_to_find_unit_in_status = 0;
     bool available_worker = false;
-    bool bfs_for_attack = false;
 
     int* distance;
     struct unit* worker = (struct unit*) malloc(sizeof(struct unit));
@@ -843,6 +986,7 @@ bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_stat
     }
 
     if (!available_worker){
+        free(worker);
         return false;
     }
 
@@ -868,8 +1012,10 @@ bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_stat
             }
         }
 
+        free(worker);
         free(target);
         free(attacker);
+        free(distance);
     }
     // If some mines are available
     else {
@@ -908,9 +1054,17 @@ bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_stat
 
             *cell_to_move_worker = mines_data->free_mines[id];
         }
+        else {
+            free(cell_to_move_worker);
+            free(distance);
+            free(worker);
+            return false;
+        }
 
         // Calculate distance
         int count_dist = get_distance(worker->coordinates.x, cell_to_move_worker->x, worker->coordinates.y, cell_to_move_worker->y);
+
+        // Coordinates for the available cell if cell_to_move_worker is too far away
         struct coordinates* available_cell = (struct coordinates*) malloc(sizeof(struct coordinates));
 
         // If cell is unreachable
@@ -939,10 +1093,12 @@ bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_stat
 
         // Create a new move order
         write_move_order(file_name, worker->unit_id, worker->coordinates.x, worker->coordinates.y);
-        return true;
 
+        free(worker);
+        free(distance);
         free(available_cell);  
         free(cell_to_move_worker);
+        return true;
     }
 
     free(distance);
@@ -950,7 +1106,7 @@ bool send_workers_to_mines(struct check_mine_result *mines_data, struct map_stat
     return false;
 }
 
-bool attack_enemy_base(struct map_state *map, struct status_info *status, struct unit* base, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool attack_enemy_base(struct map_state *map, struct status_info *status, struct unit* base, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     int units[num_of_units];
     bool enemy_base = true;
@@ -964,6 +1120,8 @@ bool attack_enemy_base(struct map_state *map, struct status_info *status, struct
 
         // Find available units
         if (!find_units(status, target, units, num_of_units, unittypes, enemy_base)){
+            free(target);
+            free(attacker);
             return false;
         }
 
@@ -983,6 +1141,8 @@ bool attack_enemy_base(struct map_state *map, struct status_info *status, struct
 
             // Find available units
             if (!find_units(status, target, units, num_of_units, unittypes, enemy_base)){
+                free(target);
+                free(attacker);
                 return false;
             }
 
@@ -1001,6 +1161,8 @@ bool attack_enemy_base(struct map_state *map, struct status_info *status, struct
     else {
         // Find available units
         if (!find_units(status, target, units, num_of_units, unittypes, enemy_base)){
+            free(target);
+            free(attacker);
             return false;
         }
 
@@ -1021,7 +1183,7 @@ bool attack_enemy_base(struct map_state *map, struct status_info *status, struct
     return true;
 }
 
-bool attack_unit(struct map_state *map, struct status_info *status, struct unit *attacker, struct unit *target, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool attack_unit(struct map_state *map, struct status_info *status, struct unit *attacker, struct unit *target, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     bool attacked = false;
     attacker->busy = true;
@@ -1049,7 +1211,7 @@ bool attack_unit(struct map_state *map, struct status_info *status, struct unit 
     // Calculate the available distance to move
     int distance = get_distance(attacker->coordinates.x, cell_to_move_attacker->x, attacker->coordinates.y, cell_to_move_attacker->y);
 
-    // If move to the closest cell near the enemy ii posiible
+    // If move to the closest cell near the enemy is posiible
     if (distance <= attacker->remaining_moves){
         attacker->coordinates.x = cell_to_move_attacker->x;
         attacker->coordinates.y =  cell_to_move_attacker->y;
@@ -1067,11 +1229,10 @@ bool attack_unit(struct map_state *map, struct status_info *status, struct unit 
     }
 
     free(cell_to_move_attacker);
-
     return attacked;
 }
 
-bool attempt_to_attack_unit(struct map_state *map, struct status_info *status, struct unit *attacker, struct unit *target, int* dist, int num_of_units, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool attempt_to_attack_unit(struct map_state *map, struct status_info *status, struct unit *attacker, struct unit *target, int* dist, int num_of_units, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     bool bfs_for_attack = true;
     int *attack_dist = bfs(map, attacker->coordinates.x, attacker->coordinates.y, map->map_height, map->map_width, status, num_of_units, attacker->unit_type->range_of_attack, bfs_for_attack);
@@ -1212,12 +1373,11 @@ struct coordinates* closest_cell_worker(struct map_state *map, struct status_inf
 // Find a unit to use as target near the given base
 bool find_target_near_given_base(struct status_info *status, struct unit *base, struct unit *target, int num_of_units, const struct unit_type* unittypes[], bool enemy_base){
 
-    // Find max attack range of all types
+    // Find max attack range for the unit
     bool all_types = false;
-    int max_range_attack;
-    int index = 1;
+    int max_range_attack = 0;;
+    int index = 0;
     int *dem = &max_range_attack;
-    max_attack_demage(index, all_types, dem);
 
     double protection_factor = 0;
     double attack_factor = 0;
@@ -1230,23 +1390,29 @@ bool find_target_near_given_base(struct status_info *status, struct unit *base, 
 
         int distance = get_distance(base->coordinates.x, status->units[i].coordinates.x, base->coordinates.y, status->units[i].coordinates.y);
         
-        if (status->units[i].player == 'E' && distance <= max_range_attack && status->units[i].current_strenght > 0 && status->units[i].unit_type->notation != 'B'){
-            if (enemy_base){
+        if (status->units[i].player == 'E' && status->units[i].current_strenght > 0 && status->units[i].unit_type->notation != 'B'){
 
-                // Base protection factor is a weightened damage unit cause to main base assaulting units: catapult and ram
-                protection_factor = (get_attack_damage(status->units[i].unit_type->notation, 'C', unittypes) + get_attack_damage(status->units[i].unit_type->notation, 'R', unittypes)) / (double)(2 * max_range_attack);
-                int compare_param = (get_weightened_strength(status, status->units[i], unittypes) * protection_factor) / distance;  
-            }
-            else {
-                // Base attach factor is relative damage unit cause to base
-                attack_factor = (double)get_attack_damage(status->units[i].unit_type->notation, 'B', unittypes) / max_range_attack;
-                int compare_param = (get_weightened_strength(status, status->units[i], unittypes) * attack_factor / distance);
-            }
+            index = get_unit_attack_index_by_notation(status->units[i].unit_type->notation, unittypes);
+            max_attack_demage(index, all_types, dem);
 
-            // Get the unit with the max parameter
-            if (compare_param > param){
-                param = compare_param;
-                id = i;
+            if (distance <= max_range_attack){
+
+                if (enemy_base){
+                    // Base protection factor is a weightened damage unit cause to main base assaulting units: catapult and ram
+                    protection_factor = (get_attack_damage(status->units[i].unit_type->notation, 'C', unittypes) + get_attack_damage(status->units[i].unit_type->notation, 'R', unittypes)) / (double)(2 * max_range_attack);
+                    compare_param = (get_weightened_strength(status, status->units[i], unittypes) * protection_factor) / distance;  
+                }
+                else {
+                    // Base attach factor is relative damage unit cause to base
+                    attack_factor = (double)get_attack_damage(status->units[i].unit_type->notation, 'B', unittypes) / max_range_attack;
+                    compare_param = (get_weightened_strength(status, status->units[i], unittypes) * attack_factor / distance);
+                }
+
+                // Get the unit with the max parameter
+                if (compare_param > param){
+                    param = compare_param;
+                    id = i;
+                }
             }
         }
     }
@@ -1268,7 +1434,7 @@ bool find_units(struct status_info *status, struct unit *unit, int units[], int 
     int counter = 0;
     bool all_types = false;
 
-    struct id_param* units_param = (struct id_param*) malloc(sizeof(struct id_param));
+    struct id_param* units_param = (struct id_param*) malloc(num_of_units * sizeof(struct id_param));
     
     // Clean the units arr
     for (int u = 0; u < num_of_units; u++){
@@ -1293,7 +1459,7 @@ bool find_units(struct status_info *status, struct unit *unit, int units[], int 
                 attack_factor = (double)get_attack_damage(status->units[i].unit_type->notation, 'B', unittypes) / max_demage;
                 compare_param = (get_weightened_strength(status, status->units[i], unittypes) * attack_factor) / distance;
             }
-            // Search for units to protect own unit
+            // Search for units to protect our own unit
             else {
                 protection_factor = (get_attack_damage(status->units[i].unit_type->notation, 'C', unittypes) + get_attack_damage(status->units[i].unit_type->notation, 'R', unittypes)) / (double)(2 * max_demage);
                 compare_param = (get_weightened_strength(status, status->units[i], unittypes) * protection_factor) / distance;
@@ -1307,13 +1473,14 @@ bool find_units(struct status_info *status, struct unit *unit, int units[], int 
 
     // If no available units
     if (counter == 0){
+        free(units_param);
         return false;
     }
 
     // Sort the units in descending order
     qsort(units_param, counter, sizeof(struct id_param), compare_desc);
 
-    // Write the units id into units[]
+    // Write the units ids into units[]
     for (int i = 0; i < counter; i++){
         units[i] = units_param[i].id;
     }
@@ -1339,7 +1506,7 @@ int compare_desc(const void* p1, const void* p2){
     return 0;
 }
 
-bool build_new_unit(struct status_info *status, struct unit *base, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool build_new_unit(struct status_info *status, struct unit *base, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     if (base->unit_type_being_built != '0' || status->gold <= 100){
         return false;
@@ -1347,14 +1514,12 @@ bool build_new_unit(struct status_info *status, struct unit *base, const struct 
 
     char notation;
     bool attack = true;
-
-    struct unit* new_unit = (struct unit*) malloc(sizeof(struct unit));
     
     // If the amount of gold is less then 300, build a worker
     if (status->gold <= 400){
         notation = 'W';
     }
-    // Find needed unit type to protect the base if base is in danger
+    // Find a needed unit type to protect the base if base is in danger
     else if (status->is_base_in_danger && status->gold >= 800){
         attack = false;
         notation = get_unit_type_priority(status, status->gold, unittypes, attack);
@@ -1381,45 +1546,43 @@ and our current high priority goal (protect our base, attack enemy's base or min
 */
 char get_unit_type_priority(struct status_info *status, int gold, const struct unit_type* unittypes[], bool attack){
 
-    double type_priority;
-    double priority = DBL_MAX;
+    double priority = INT_MIN;
     double temp_type_priority;
     int id = 0;
 
-    // Find max attack range of all types
+    // Find max attack demage of a unit type
     bool all_types = false;
-    int max_range_attack;
-    int index = 1;
+    int max_range_attack = 0;
+    int index = 0;
     int *dem = &max_range_attack;
-    max_attack_demage(index, all_types, dem);
 
     for (int i = 0; i < NUM_OF_TYPES; i++){
-        if (unittypes[i]->cost > gold){
-            type_priority = -1;
-        }
-        else {
-            type_priority = 1;
-        }
 
-        // Get the unit types weightened strenght
-        double weightened_strength = get_weightened_strength_for_unit_type(unittypes[i], unittypes);
+        if (unittypes[i]->notation != 'B'){
 
-        // If searching for a unit type for protection of our base
-        if (!attack){
-            double protection_factor = (get_attack_damage(unittypes[i]->notation, 'C', unittypes) + get_attack_damage(unittypes[i]->notation, 'R', unittypes)) / (double)(2 * max_range_attack);
-            temp_type_priority = type_priority * weightened_strength * protection_factor * gold / (unittypes[i]->time_to_build * unittypes[i]->cost); 
-        }
-        // If searching for a unit type for attack on the enemys base
-        else {
-            double attack_factor = (double)get_attack_damage(unittypes[i]->notation, 'B', unittypes) / max_range_attack;
-            temp_type_priority = type_priority * weightened_strength * attack_factor * gold / (unittypes[i]->time_to_build * unittypes[i]->cost);
-        }
+            index = get_unit_attack_index_by_notation(unittypes[i]->notation, unittypes);
+            max_attack_demage(index, all_types, dem);
 
-        // Get the unit id with the max priority
-        if (priority < temp_type_priority){
-            priority = temp_type_priority;
-            id = i;
-        } 
+            // Get the unit types weightened strenght
+            double weightened_strength = get_weightened_strength_for_unit_type(unittypes[i], unittypes);
+
+            // If searching for a unit type for protection
+            if (!attack){
+                double protection_factor = (get_attack_damage(unittypes[i]->notation, 'C', unittypes) + get_attack_damage(unittypes[i]->notation, 'R', unittypes)) / (double)(2 * max_range_attack);
+                temp_type_priority = weightened_strength * max_range_attack * protection_factor * (gold - unittypes[i]->cost) / (unittypes[i]->time_to_build * unittypes[i]->cost); 
+            }
+            // If searching for a unit type for attack 
+            else {
+                double attack_factor = (double)get_attack_damage(unittypes[i]->notation, 'B', unittypes) / max_range_attack;
+                temp_type_priority = weightened_strength * attack_factor * (double)get_attack_damage(unittypes[i]->notation, 'B', unittypes) * unittypes[i]->speed * unittypes[i]->range_of_attack * (gold - unittypes[i]->cost) / (unittypes[i]->time_to_build * unittypes[i]->cost);
+            }
+
+            // Get the unit id with the max priority
+            if (priority < temp_type_priority){
+                priority = temp_type_priority;
+                id = i;
+            }
+        }
     }
 
     return unittypes[id]->notation;
@@ -1431,7 +1594,7 @@ double get_relative_strength_balance_near_our_base(struct status_info *status, s
 
     // Find max attack range of all types
     bool all_types = true;
-    int max_range_attack;
+    int max_range_attack = 0;
     int index = 1;
     int *dem = &max_range_attack;
     max_attack_demage(index, all_types, dem);
@@ -1456,7 +1619,7 @@ double get_relative_strength_balance_near_our_base(struct status_info *status, s
     return balance;
 }
 
-bool protect_our_base(struct map_state *map, struct status_info *status, struct unit* base, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[MAX_STRING_SIZE]){
+bool protect_our_base(struct map_state *map, struct status_info *status, struct unit* base, int* dist, struct check_mine_result *result, int num_of_units, const struct unit_type* unittypes[], char file_name[PATH_MAX]){
 
     double relative_strength_balance = 0.0;
     relative_strength_balance = get_relative_strength_balance_near_our_base(status, base, num_of_units, unittypes);
@@ -1480,6 +1643,7 @@ bool protect_our_base(struct map_state *map, struct status_info *status, struct 
     struct unit* target = (struct unit*) malloc(sizeof(struct unit));
 
     if (!find_target_near_given_base(status, base, target, num_of_units, unittypes, enemy_unit)){
+        free(target);
         return false;
     }
 
@@ -1530,10 +1694,22 @@ int count_available_units(int units[], int num_of_units){
 
 // Helper functions
 int* allocate_2d_int_array(int num_of_rows, int num_of_columns){
+
     return (int*)malloc(num_of_rows * num_of_columns * sizeof(int));
 }
 
 int get_index_for_2d_array(int row, int col, int num_of_columns)
 {
     return row * num_of_columns + col;
+}
+
+void free_memory(struct map_state *map, struct status_info *status, struct unit* e_base, struct unit* our_base, int* dist, struct check_mine_result *result, struct unit* units){
+
+    free(dist);
+    free(our_base);
+    free(e_base);
+    free(units);
+    free(status);
+    free(map);
+    free(result);
 }
