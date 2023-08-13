@@ -1096,7 +1096,7 @@ bool run_player_program(struct status_info *status, char *map_file, char *status
         int_time_limit = limit;
     }
     
-    char player_program[100] = "/home/tati/Downloads/Tietoevry_game-main/mediator/player.exe";
+    char player_program[100] = "./player.exe";
     char player_argv[PATH_MAX];
 
     char *time_lim = (char*)malloc(sizeof(time_lim));
