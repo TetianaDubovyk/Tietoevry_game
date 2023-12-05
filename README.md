@@ -1,4 +1,4 @@
-# Tietoevry strategy game
+# A strategy game
 A turn based strategy game, written in C.
 ## Description
 There are two applications in this project: mediator and player.<br>
